@@ -87,7 +87,6 @@ public:
   void set_ch_freq(uint8_t ch, int32_t freq, bool forced = false) {
     uint8_t fb = (ch == 0) ? SYNTH_PLL_A : SYNTH_PLL_B;
     uint8_t ms = (ch == 0) ? SYNTH_MS0_BASE : ((ch == 1) ? SYNTH_MS1_BASE : SYNTH_MS2_BASE);
-    uint8_t cc = (ch == 0) ? CLK0_CONTROL_REG : ((ch == 1) ? CLK1_CONTROL_REG : CLK2_CONTROL_REG);
 
     // if f > 150M, must use /4
     if (freq > 150000000) {
@@ -95,25 +94,25 @@ public:
         Serial.println("W: PLL overclock mode");
       }
       si5351_ms_set_freq(fb, freq * 4, dev_xtal_freq, 0);
-      si5351_write(cc, cfg.control[ch] | CLKx_CONTROL_MSx_INT_MODE);
+      set_ch_control(ch, get_ch_control(ch) | CLKx_CONTROL_MSx_INT_MODE);
       si5351_ms_set_par(ms, 4, 0, 1, 0, true);
     }
     // if f in [112.5M, 150M), must use /6
     else if (freq > 112500000) {
       si5351_ms_set_freq(fb, freq * 6, dev_xtal_freq, 0);
-      si5351_write(cc, cfg.control[ch]);
+      set_ch_control(ch, get_ch_control(ch) & (~CLKx_CONTROL_MSx_INT_MODE));
       si5351_ms_set_par(ms, 6, 0, 1, 0, false);
     }
     // if f in [500k, 112.5M), fix PLL to 900M
     else if (freq >= 500000) {
       si5351_ms_set_freq(fb, MAX_VCO_FREQ, dev_xtal_freq, 0);
-      si5351_write(cc, cfg.control[ch]);
+      set_ch_control(ch, get_ch_control(ch) & (~CLKx_CONTROL_MSx_INT_MODE));
       si5351_ms_set_freq(ms, MAX_VCO_FREQ, freq, 0);
     }
     // if f < 500k, must use R dividers
     else {
       si5351_ms_set_freq(fb, MIN_VCO_FREQ, dev_xtal_freq, 0);
-      si5351_write(cc, cfg.control[ch]);
+      set_ch_control(ch, get_ch_control(ch) & (~CLKx_CONTROL_MSx_INT_MODE));
       si5351_ms_set_freq(ms, MIN_VCO_FREQ, freq * 128, 7);
     }
 

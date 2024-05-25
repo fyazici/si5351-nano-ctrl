@@ -24,8 +24,17 @@ enum class app_state : int {
   SEL_CH = 1,
   ADJ_FREQ = 2,
   PRESET = 3,
-  XTAL_CORR = 4
+  XTAL_CORR = 4,
+  APP_INFO = 5
 };
+
+const char * APP_INFO_STR =
+  "SI5351 Controller\n"
+  "w/ Arduino Nano\n\n"
+  "Build:\n" 
+  __DATE__ " " __TIME__ "\n"
+  "github.com/fyazici\n/si5351-nano-ctrl"
+;
 
 app_state state;
 uint8_t ch_sel, digit_sel, preset_sel;
@@ -34,6 +43,8 @@ GFXcanvas1 canvas(128, 32);
 void setup() {
   Wire.begin();
   Serial.begin(115200);
+
+  Serial.println(APP_INFO_STR);
 
   {
     int32_t xtal_freq;
@@ -208,8 +219,8 @@ void ui_draw_info_panel(uint8_t x, uint8_t y) {
       canvas.print("PRESET");
       canvas.setCursor(48, 13);
       canvas.print("-");
-      canvas.setCursor(112, 13);
-      canvas.print("-");
+      canvas.setCursor(103, 13);
+      canvas.print("INFO");
       canvas.setCursor(68, 24);
       canvas.print("ENTER");
       break;
@@ -259,11 +270,34 @@ void ui_draw_info_panel(uint8_t x, uint8_t y) {
       canvas.setCursor(71, 24);
       canvas.print("BACK");
       break;
+    case app_state::APP_INFO:
+      canvas.setCursor(0, 4);
+      canvas.print("  -  ");
+      canvas.setCursor(0, 20);
+      canvas.print("  -  ");
+      canvas.drawFastVLine(35, 0, 32, 1);
+      canvas.setCursor(80, 2);
+      canvas.print("-");
+      canvas.setCursor(48, 13);
+      canvas.setCursor(48, 13);
+      canvas.print("-");
+      canvas.setCursor(112, 13);
+      canvas.print("-");
+      canvas.setCursor(71, 24);
+      canvas.print("BACK");
     default:
       break;
   }
 
   fastDraw1(x, y, canvas.getBuffer(), 128, 32, ST77XX_RED, ST77XX_BLACK);
+}
+
+void ui_draw_app_info(uint8_t x, uint8_t y) {
+  tft.fillScreen(ST77XX_BLACK);
+  tft.setFont();
+  tft.setTextColor(ST77XX_GREEN);
+  tft.setCursor(x, y);
+  tft.print(APP_INFO_STR);
 }
 
 void process_sel_ch() {
@@ -296,6 +330,14 @@ void process_sel_ch() {
   switch (btn_n.update()) {
     case ButtonController::Event::Click:
       state = app_state::PRESET;
+      disp_redraw = true;
+      break;
+    default:
+      break;
+  }
+  switch (btn_e.update()) {
+    case ButtonController::Event::Click:
+      state = app_state::APP_INFO;
       disp_redraw = true;
       break;
     default:
@@ -523,6 +565,17 @@ void process_xtal_corr() {
   }
 }
 
+void process_app_info() {
+  switch (btn_s.update()) {
+    case ButtonController::Event::Click:
+      state = app_state::SEL_CH;
+      disp_redraw = true;
+      break;
+    default:
+      break;
+  }
+}
+
 void loop() {
   switch (state) {
     case app_state::SEL_CH:
@@ -536,6 +589,9 @@ void loop() {
       break;
     case app_state::XTAL_CORR:
       process_xtal_corr();
+      break;
+    case app_state::APP_INFO:
+      process_app_info();
       break;
     default:
       break;
@@ -562,6 +618,10 @@ void loop() {
       case app_state::XTAL_CORR:
         ui_draw_freq_corr(0, 0, digit_sel);
         tft.fillRect(0, 32, 128, 96, ST77XX_BLACK);
+        break;
+      case app_state::APP_INFO:
+        ui_draw_app_info(0, 0);
+        break;
       default:
         break;
     }
