@@ -95,13 +95,13 @@ public:
       }
       si5351_ms_set_freq(fb, freq * 4, dev_xtal_freq, 0);
       set_ch_control(ch, get_ch_control(ch) | CLKx_CONTROL_MSx_INT_MODE);
-      si5351_ms_set_par(ms, 4, 0, 1, 0, true);
+      si5351_ms_set_par(ms, 4, 0, 1, 0, SYNTH_MSx_DIVBY4);
     }
     // if f in [112.5M, 150M), must use /6
     else if (freq > 112500000) {
       si5351_ms_set_freq(fb, freq * 6, dev_xtal_freq, 0);
       set_ch_control(ch, get_ch_control(ch) & (~CLKx_CONTROL_MSx_INT_MODE));
-      si5351_ms_set_par(ms, 6, 0, 1, 0, false);
+      si5351_ms_set_par(ms, 6, 0, 1, 0, 0);
     }
     // if f in [500k, 112.5M), fix PLL to 900M
     else if (freq >= 500000) {
@@ -123,6 +123,13 @@ public:
         // reflect the update to forced channel (1->2, 2->1)
         set_ch_freq(3 - ch, freq, true);
       }
+    }
+
+    // reset PLL to ensure settings applied
+    if (fb == SYNTH_PLL_A) {
+      si5351_write(PLL_RESET, 0x20);
+    } else {
+      si5351_write(PLL_RESET, 0x80);
     }
 
     cfg.freq[ch] = freq;
@@ -267,7 +274,7 @@ private:
     si5351_write(CLK_OE_CONTROL_REG, oeb);
   }
 
-  void si5351_ms_set_par(int synth, uint32_t a, uint32_t b, uint32_t c, uint8_t log_rdiv, bool divby4) {
+  void si5351_ms_set_par(int synth, uint32_t a, uint32_t b, uint32_t c, uint8_t log_rdiv, uint8_t divby4) {
     uint32_t p1, p2, p3;
 
     if (divby4) {
@@ -280,7 +287,9 @@ private:
       p3 = c;
     }
 
-    Serial.print("I: a=");
+    Serial.print("I: synth=");
+    Serial.print(synth);
+    Serial.print(", a=");
     Serial.print(a);
     Serial.print(", b=");
     Serial.print(b);
@@ -291,17 +300,16 @@ private:
     Serial.print(", p2=");
     Serial.print(p2);
     Serial.print(", p3=");
-    Serial.println(p3);
+    Serial.print(p3);
+    Serial.print(", log(r)=");
+    Serial.print(log_rdiv);
+    Serial.print(", divby4=");
+    Serial.println(divby4);
 
     //Write data to multisynth registers of synth n
     si5351_write(synth, (p3 & 0x0000FF00) >> 8);
     si5351_write(synth + 1, (p3 & 0x000000FF));
-    if (divby4) {
-      si5351_write(synth + 2, (log_rdiv << 4) | SYNTH_MSx_DIVBY4 | ((p1 & 0x00030000) >> 16));
-    }
-    else {
-      si5351_write(synth + 2, (log_rdiv << 4) | (p1 & 0x00030000) >> 16);
-    }
+    si5351_write(synth + 2, (log_rdiv << 4) | divby4 | ((p1 & 0x00030000) >> 16));
     si5351_write(synth + 3, (p1 & 0x0000FF00) >> 8);
     si5351_write(synth + 4, (p1 & 0x000000FF));
     si5351_write(synth + 5, ((p3 & 0x000F0000) >> 12) | ((p2 & 0x000F0000) >> 16));
@@ -318,7 +326,7 @@ private:
     rm = fdiv - a;  //(equiv. b/c)
     b = rm * c;
 
-    si5351_ms_set_par(synth, a, b, c, log_rdiv, false);
+    si5351_ms_set_par(synth, a, b, c, log_rdiv, 0);
   }
 };
 }
