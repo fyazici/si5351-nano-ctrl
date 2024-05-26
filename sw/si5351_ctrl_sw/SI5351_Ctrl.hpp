@@ -23,6 +23,7 @@ constexpr uint8_t CLKx_CONTROL_CLKx_SRC_MS = 0b00001100;
 constexpr uint8_t CLKx_CONTROL_MSx_SRC_PLLA = 0b00000000;
 constexpr uint8_t CLKx_CONTROL_MSx_SRC_PLLB = 0b00100000;
 constexpr uint8_t CLKx_CONTROL_MSx_INT_MODE = 0b01000000;
+constexpr uint8_t CLKx_CONTROL_PDN = 0b10000000;
 
 constexpr uint8_t SYNTH_PLL_A = 26;
 constexpr uint8_t SYNTH_PLL_B = 34;
@@ -48,16 +49,13 @@ public:
     uint8_t checksum;
   };
 
-  void set_ch_en(uint8_t oeb) {
-    cfg.oeb = oeb;
-    si5351_set_oec(cfg.oeb);
-  }
-
   void set_ch_en(uint8_t ch, bool en) {
     if (en) {
       cfg.oeb &= ~(0x1 << ch);
+      set_ch_control(ch, get_ch_control(ch) & (~CLKx_CONTROL_PDN));
     } else {
       cfg.oeb |= (0x1 << ch);
+      set_ch_control(ch, get_ch_control(ch) | CLKx_CONTROL_PDN);
     }
     si5351_set_oec(cfg.oeb);
   }
@@ -204,7 +202,9 @@ public:
       return false;
     }
 
-    set_ch_en(new_cfg.oeb);
+    set_ch_en(0, new_cfg.oeb & 0x1);
+    set_ch_en(1, new_cfg.oeb & 0x2);
+    set_ch_en(2, new_cfg.oeb & 0x4);
 
     set_ch_control(0, new_cfg.control[0]);
     set_ch_control(1, new_cfg.control[1]);
@@ -218,8 +218,6 @@ public:
   }
 
   void set_default() {
-    set_ch_en(0x0);
-
     set_ch_control(0, CLKx_CONTROL_IDRV_8ma | CLKx_CONTROL_CLKx_SRC_MS | CLKx_CONTROL_MSx_SRC_PLLA);
     set_ch_control(1, CLKx_CONTROL_IDRV_8ma | CLKx_CONTROL_CLKx_SRC_MS | CLKx_CONTROL_MSx_SRC_PLLB);
     set_ch_control(2, CLKx_CONTROL_IDRV_8ma | CLKx_CONTROL_CLKx_SRC_MS | CLKx_CONTROL_MSx_SRC_PLLB);
@@ -227,6 +225,10 @@ public:
     set_ch_freq(0, 1000000);
     set_ch_freq(1, 10000000);
     set_ch_freq(2, 100000000);
+
+    set_ch_en(0, 0);
+    set_ch_en(1, 0);
+    set_ch_en(2, 0);
   }
 
   void begin(TwoWire *wire_ = &Wire, uint8_t addr = SI5351_ADDRESS, uint32_t xtal = XTAL_FREQ) {
