@@ -9,7 +9,7 @@ public:
     LongPress
   };
   
-  ButtonController(uint8_t pin, uint32_t debounce_ms=50, uint32_t long_press_ms=500) 
+  ButtonController(uint8_t pin, uint32_t debounce_ms=100, uint32_t long_press_ms=500) 
     : pin{pin}, debounce_ms{debounce_ms}, long_press_ms{long_press_ms} {
   }
 

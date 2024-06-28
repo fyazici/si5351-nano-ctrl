@@ -18,7 +18,11 @@ RotaryEncoder renc(A0, A1);
 constexpr int EEPROM_PRESET_BASE = 0;
 constexpr int EEPROM_XTAL_CORR_BASE = 124;
 
-bool disp_redraw = true;
+constexpr int DISP_BACKLIGHT_PIN = 3;
+constexpr uint32_t DISP_TIMEOUT = 60000;
+
+bool disp_redraw;
+uint32_t disp_last_activity;
 
 enum class app_state : int {
   SEL_CH = 1,
@@ -28,13 +32,12 @@ enum class app_state : int {
   APP_INFO = 5
 };
 
-const char * APP_INFO_STR =
-  "SI5351 Controller\n"
-  "w/ Arduino Nano\n\n"
-  "Build:\n" 
-  __DATE__ " " __TIME__ "\n"
+#define APP_INFO_STR\
+  "SI5351 Controller\n"\
+  "w/ Arduino Nano\n\n"\
+  "Build:\n"\
+  __DATE__ " " __TIME__ "\n"\
   "github.com/fyazici\n/si5351-nano-ctrl"
-;
 
 app_state state;
 uint8_t ch_sel, digit_sel, preset_sel;
@@ -60,8 +63,8 @@ void setup() {
   }
 
   // display backlight
-  pinMode(3, OUTPUT);
-  digitalWrite(3, HIGH);
+  pinMode(DISP_BACKLIGHT_PIN, OUTPUT);
+  digitalWrite(DISP_BACKLIGHT_PIN, HIGH);
 
   tft.initR(INITR_144GREENTAB);
   tft.setRotation(1);
@@ -81,6 +84,11 @@ void setup() {
   ch_sel = 0;
   digit_sel = 0;
   preset_sel = 0;
+
+  Serial.print("> ");
+
+  disp_redraw = true;
+  disp_last_activity = millis();
 }
 
 void print_freq(uint8_t x, uint8_t y, uint32_t freq, int8_t digit_sel) {
@@ -297,7 +305,7 @@ void ui_draw_app_info(uint8_t x, uint8_t y) {
   tft.setFont();
   tft.setTextColor(ST77XX_GREEN);
   tft.setCursor(x, y);
-  tft.print(APP_INFO_STR);
+  tft.print(F(APP_INFO_STR));
 }
 
 void process_sel_ch() {
@@ -473,6 +481,7 @@ void process_preset() {
       {
         Serial.println("I: save preset");
         auto cfg = clock_ctrl.get_config();
+        cfg.dump();
         int addr = EEPROM_PRESET_BASE + preset_sel * sizeof(cfg);
         EEPROM.put(addr, cfg);
         state = app_state::SEL_CH;
@@ -489,6 +498,7 @@ void process_preset() {
         SI5351_Controller::Config cfg;
         int addr = EEPROM_PRESET_BASE + preset_sel * sizeof(cfg);
         EEPROM.get(addr, cfg);
+        cfg.dump();
         clock_ctrl.set_config(cfg);
         state = app_state::SEL_CH;
         disp_redraw = true;
@@ -576,7 +586,65 @@ void process_app_info() {
   }
 }
 
+
+void process_shell() {
+  static char buffer[8] = { 0 };
+  static uint8_t idx = 0;
+  
+  char cmd;
+  uint8_t addr, val;
+  bool e = false;
+  
+  if (Serial.available()) {
+    char c = (char)Serial.read();
+    Serial.write(c);
+    if (c == '\n') {
+      buffer[idx] = 0;
+      idx = 0;
+
+      if (sscanf(buffer, " %c %hhu %hhx", &cmd, &addr, &val) == 3) {
+        switch (cmd) {
+          case 'w':
+          case 'W':
+            clock_ctrl.__raw_write_reg(addr, val);
+            break;
+          case 'r':
+          case 'R':
+            val = clock_ctrl.__raw_read_reg(addr);
+            Serial.println(val, HEX);
+            break;
+          default:
+            e = true;
+            break;
+        }
+        Serial.flush();
+        Serial.print("> ");
+      } else {
+        e = true;
+      }
+      if (e) {
+        Serial.print(F("usage: \nw A V : reg(A)<=V\nr A 0 : V<=r(A)\n"));
+        Serial.print("\n> ");
+      }
+    } else {
+      if (idx < sizeof(buffer)) {
+        buffer[idx++] = c;
+      } else {
+        Serial.flush();
+        idx = 0;
+        Serial.println(F("E: shell buffer overrun (8)"));
+        Serial.print("\n> ");
+      }
+    }
+  }
+}
+
 void loop() {
+
+  auto t = millis();
+
+  process_shell();
+
   switch (state) {
     case app_state::SEL_CH:
       process_sel_ch();
@@ -598,6 +666,11 @@ void loop() {
   }
 
   if (disp_redraw) {
+    tft.enableDisplay(true);
+    delay(50);
+    digitalWrite(DISP_BACKLIGHT_PIN, HIGH);
+
+    disp_last_activity = millis();
     switch (state) {
       case app_state::SEL_CH:
         ui_draw_ch(0, 0, 0, ch_sel == 0);
@@ -627,9 +700,15 @@ void loop() {
     }
     ui_draw_info_panel(0, 96);
     disp_redraw = false;
+  } else {
+    delay(33);
   }
 
-  delay(10);
+  if ((millis() - disp_last_activity) > DISP_TIMEOUT) {
+    digitalWrite(DISP_BACKLIGHT_PIN, LOW);
+    tft.enableDisplay(false);
+    state = app_state::SEL_CH;
+  }
 }
 
 // NOTE: change PCINT0-2 based on pins used for encoder output A

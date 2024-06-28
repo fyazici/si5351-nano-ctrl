@@ -47,6 +47,15 @@ public:
     uint8_t control[3];
     int32_t freq[3];
     uint8_t checksum;
+
+    void dump() const {
+      Serial.println("Config {");
+      Serial.print("  oeb="); Serial.println(oeb);
+      Serial.print("  control="); Serial.print(control[0]); Serial.print(","); Serial.print(control[1]); Serial.print(","); Serial.println(control[2]);
+      Serial.print("  freq="); Serial.print(freq[0]); Serial.print(","); Serial.print(freq[1]); Serial.print(","); Serial.println(freq[2]);
+      Serial.print("  checksum="); Serial.println(checksum);
+      Serial.println("}\n");
+    }
   };
 
   void set_ch_en(uint8_t ch, bool en) {
@@ -163,7 +172,7 @@ public:
 
   uint32_t set_xtal_freq(uint32_t freq) {
     dev_xtal_freq = freq;
-    Serial.println("I: recompute all channels due to xtal freq correction");
+    Serial.println("I: recompute");
     Serial.println(freq);
     set_ch_freq(0, cfg.freq[0]);
     set_ch_freq(1, cfg.freq[1]);
@@ -175,12 +184,9 @@ public:
     const uint8_t *p = (uint8_t *)(&cfg);
     const uint8_t * const end = p + sizeof(cfg) - 1;
     uint8_t checksum = 0x5A;
-    Serial.println("I: get_config checksum begin");
     for (; p < end; ++p) {
       checksum ^= *p;
-      Serial.print(*p); Serial.print(" "); Serial.println(checksum);
     }
-    Serial.println("I: get_config checksum end");
     cfg.checksum = checksum;
     return cfg;
   }
@@ -190,21 +196,18 @@ public:
     const uint8_t *p = (uint8_t *)(&new_cfg);
     const uint8_t * const end = p + sizeof(new_cfg);
     uint8_t checksum = 0x5A;
-    Serial.println("I: set_config checksum begin");
     for (; p < end; ++p) {
       checksum ^= *p;
-      Serial.print(*p); Serial.print(" "); Serial.println(checksum);
     }
-    Serial.println("I: set_config checksum end");
     if (checksum) {
       Serial.print("preset checksum error ");
       Serial.println(checksum);
       return false;
     }
 
-    set_ch_en(0, new_cfg.oeb & 0x1);
-    set_ch_en(1, new_cfg.oeb & 0x2);
-    set_ch_en(2, new_cfg.oeb & 0x4);
+    set_ch_en(0, !(new_cfg.oeb & 0x1));
+    set_ch_en(1, !(new_cfg.oeb & 0x2));
+    set_ch_en(2, !(new_cfg.oeb & 0x4));
 
     set_ch_control(0, new_cfg.control[0]);
     set_ch_control(1, new_cfg.control[1]);
@@ -243,6 +246,14 @@ public:
     begin(&Wire, SI5351_ADDRESS, xtal);
   }
 
+  void __raw_write_reg(uint8_t addr, uint8_t value) {
+    si5351_write(addr, value);
+  }
+
+  uint8_t __raw_read_reg(uint8_t addr) {
+    return si5351_read(addr);
+  }
+
 private:
   TwoWire *the_wire;
   uint8_t dev_address;
@@ -259,6 +270,16 @@ private:
     the_wire->write(reg_addr);
     the_wire->write(reg_value);
     the_wire->endTransmission();
+  }
+
+  uint8_t si5351_read(uint8_t reg_addr) {
+    uint8_t r;
+    the_wire->beginTransmission(dev_address);
+    the_wire->write(reg_addr);
+    the_wire->endTransmission();
+    
+    the_wire->requestFrom(dev_address, 1);
+    return the_wire->read();
   }
 
   void si5351_start(void) {
